@@ -1,0 +1,47 @@
+﻿Table: osm_metrics_[COUNTYFIPS],
+﻿osm_id,id of the OpenStreetMap way. Joins to the spatial data file
+deadend,True if the street is a deadend. (Note that this can be misleading for longer streets that consist of multiple blocks.)
+clazz,"OpenStreetMap way type, as defined by osm2po. See below for definitions"
+npts,Number of points that are used to calculate the width
+median_width,"Median width of the street, in meters"
+length,Length of the street in meters
+netlength,"Length of the street in meters, excluding intersections"
+area,"Area of the street polygon, in square meters"
+intersection_width,"Width of intersections, in meters. netlength+intersection_width=length"
+urbanized,True if the street is in the Census-defined urbanized area
+fbuy,"First Built Up Year, as defined in the HISDAC dataset (Leyk et al. 2020)"
+perimeter,"Perimeter of the street polygon, in meters. Note that this may be misleading as the polygons are irregular at intersections, to avoid double counting the area of intersecting streets."
+landvalue_acre,"Land value per acre as defined by Davis et al. 2020, measured at the census tract level"
+landvalue_acre_std,"Land value per acre as defined by Davis et al. 2020, measured at the census tract level and standardized to quarter-acre lots under single-family use"
+interpolated,"1 if the land value is interpolated from nearby census tracts, or 0 if the tract-specific Davis et al. data are used. A value between 0 and 1 indicates that the street spans several census tracts, at least one of which is interpolated."
+built_median,"Median year built of residential structures in that census tract, from the American Community Survey 2014-18 5-year estimates"
+units_sqkm,"Housing units per square km in that census tract, from the American Community Survey 2014-18 5-year estimates"
+pop_sqkm,"Population per square km in that census tract, from the American Community Survey 2014-18 5-year estimates"
+streetvalue_m,Value of the street right-of-way (million $). Equal to area / 4046.86 * landvalue_acre. (There are 4046.86 square meters in an acre.)
+streetvalue_m_std,"Value of the street right-of-way (million $), using the standardized land values. Equal to area / 4046.86 * landvalue_acre_std."
+is_residential,True if the street is residential (clazz=41)
+width_ft,"Median width of the street, in feet. Equal to median_width / 3.28084"
+ignore,True if the median_width value should be ignored. This is normally the case for irregularly shaped abutting parcels. True where area/(length*median_width)>5 OR perimeter/(length+median_width)>8
+value_std_per_25ft,Normalized standardized land value per 25ft of street (roughly equivalent to the per-parcel value with 50ft wide lots on both sides of the street). Equal to streetvalue_m_std * 1000000 / length / 3.28084 * 25
+,
+clazz,OSM tag
+11,motorway
+12,motorway_link
+13,trunk
+14,trunk_link
+15,primary
+16,primary_link
+21,secondary
+22,secondary_link
+31,tertiary
+32,tertiary_link
+41,residential
+42,road
+43,unclassified
+51,service
+63,living_street
+See https://wiki.openstreetmap.org/wiki/Key:highway for tag definitions,
+,
+References:,
+"Davis, Morris, William Larson, Stephen Oliner, and Jessica Shui. 2020. The Price of Residential Land for Counties, ZIP Codes, and Census Tracts in the United States. Working Paper 19- 01. Federal Housing Finance Agency. https://www.fhfa.gov/PolicyProgramsResearch/Research/Pages/wp1901.aspx",
+"Leyk, Stefan, Johannes H. Uhl, Dylan S. Connor, Anna E. Braswell, Nathan Mietkiewicz, Jennifer K. Balch, and Myron Gutmann. 2020. “Two Centuries of Settlement and Urban Development in the United States.” Science Advances 6(23):eaba2937. doi: 10.1126/sciadv.aba2937. https://advances.sciencemag.org/content/6/23/eaba2937",
