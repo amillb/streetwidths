@@ -3,8 +3,18 @@
 """
 Process a county streets and parcels data
 to calculate land values
+
+There are two ways to run this:
+- runall() will recreate the JAPA analysis, including the figures
+- run_counties(counties_to_do) will run additional counties and save a .tsv file of data
+    counties_to_do is a list like ['san_francisco_ca','tarrant_tx']
+Input data must be added to the datapath folder (defined in definePaths) as follows:
+ - parcels: in Parcel_data/county_name/  (e.g. Parcel_data/san_francisco_ca/)
+ - OSM: in Roads/state-latest.osm.pbf
+
 """
 
+from numpy import core
 import pandas as pd
 import math
 import matplotlib.pyplot as plt
@@ -21,20 +31,23 @@ sqm_per_acre, m2ft = 4046.86, 3.28084
 c5s = ['#e41a1c', '#377eb8', '#4daf4a', '#984ea3', '#ff7f00','k']
 c2s = ['#7570b3','#1b9e77']
 
+# to do:
+# append land values to postgres table
+# check data loader can append, rather than overwrite
+
+# 20 counties in JAPA article
+# these are the counties that will be run in 
+core_counties = ['alameda_ca', 'bexar_tx', 'cook_il', 'dallas_tx', 'harris_tx', 
+               'hennepin_mn', 'king_wa', 'kings_ny', 'los_angeles_ca', 'maricopa_az',
+               'miami_dade_fl', 'middlesex_ma', 'orange_ca', 'queens_ny', 'riverside_ca',
+               'san_bernardino_ca', 'san_diego_ca', 'santa_clara_ca', 'shelby_tn', 'tarrant_tx']
+
 # projections are State Plane (NAD83(NSRS2007)) meters, code is EPSG
+# counties are manually added for now. Would be nice to have a lookup
 projections = {'alameda_ca':3493, 'bexar_tx':3673, 'cook_il':3528, 'dallas_tx':3669, 'harris_tx':3673, 
                'hennepin_mn':3596, 'king_wa':3689, 'kings_ny':3627, 'los_angeles_ca':3497, 'maricopa_az':3478,
                'miami_dade_fl':3511, 'middlesex_ma':3585, 'orange_ca':3499, 'queens_ny':3627, 'riverside_ca':3499,
-            'san_bernardino_ca':3497, 'san_diego_ca':3499, 'santa_clara_ca':3493, 'shelby_tn':3661, 'tarrant_tx':3669}
-fipslookup = {'alameda_ca':'06001', 'bexar_tx':'48029', 'cook_il':'17031', 'dallas_tx':'48113', 'harris_tx':'48201', 
-              'hennepin_mn':'27053', 'king_wa':'53033', 'kings_ny':'36047', 'los_angeles_ca':'06037', 'maricopa_az':'04013',
-            'miami_dade_fl':'12086', 'middlesex_ma':'25017', 'orange_ca':'06059', 'queens_ny':'36081', 'riverside_ca':'06065',
-            'san_bernardino_ca':'06071', 'san_diego_ca':'06073', 'santa_clara_ca':'06085', 'shelby_tn':'47157','tarrant_tx':'48439'}
-countylookup = {fips:county for county, fips in fipslookup.items()}
-def format_county(cname):
-    cname = cname.replace('_',' ').title()
-    return cname[:-3]+','+cname[-3:].upper() # format state name
-countylookup_formatted = {fips:format_county(county) for county, fips in fipslookup.items()}
+            'san_bernardino_ca':3497, 'san_diego_ca':3499, 'san_francisco_ca':3493, 'santa_clara_ca':3493, 'shelby_tn':3661, 'tarrant_tx':3669}
 
 def definePaths():
     basepath = '/Users/adammb/Documents/GDrive/Research/Street widths/'
@@ -48,6 +61,41 @@ def definePaths():
              'website':basepath+'Streets_website/',}
     return paths
 paths = definePaths()
+
+def createLookups():
+    """Returns 4 dictionaries:
+    - countyname to fips
+    - fips to countyname
+    - fips to formatted countyname
+    - state fips to state two letter"""
+
+    state2letters = {'01':'al', '02':'ak', '04':'az', '05':'ar', '06':'ca', '08':'co', '09':'ct',
+                     '10':'de', '11':'dc', '12':'fl', '13':'ga', '15':'hi', '16':'id', '17':'il', '18':'in', '19':'ia',
+                     '20':'ks', '21':'ky', '22':'la', '23':'me', '24':'md', '25':'ma', '26':'mi', '27':'mn', '28':'ms', '29':'mo',
+                     '30':'mt', '31':'ne', '32':'nv', '33':'nh', '34':'nj', '35':'nm', '36':'ny', '37':'nc', '38':'nd', '39':'oh',
+                     '40':'ok', '41':'or', '42':'pa', '44':'ri', '45':'sc', '46':'sd', '47':'tn', '48':'tx', '49':'ut', 
+                     '50':'vt', '51':'va', '53':'wa', '54':'wv', '55':'wi', '56':'wy'}
+
+    # downloaded from https://www.census.gov/geographies/reference-files/2020/demo/popest/2020-fips.html, 7/1/21
+    fn = 'all-geocodes-v2020.xlsx'
+    df = pd.read_excel(paths['code']+fn, engine='openpyxl', skiprows=4)
+    df = df[df['Summary Level']==50]
+    df['state2letter'] = df['State Code (FIPS)'].astype(str).str.zfill(2).map(state2letters)
+    df['countyname'] = df['Area Name (including legal/statistical area description)'].str.lower().str.replace('county','').str.replace(' ','_').str.replace('-','_') + df.state2letter
+    df['fips'] = df['State Code (FIPS)'].astype(str).str.zfill(2) + df['County Code (FIPS)'].astype(str).str.zfill(3)
+
+    df.dropna(subset=['countyname'], inplace=True)
+    fipslookup = df.set_index('countyname').fips.to_dict()
+
+
+    countylookup = {fips:county for county, fips in fipslookup.items()}
+    def format_county(cname):
+        cname = cname.replace('_',' ').title()
+        return cname[:-3]+','+cname[-3:].upper() # format state name
+    countylookup_formatted = {fips:format_county(county) for county, fips in fipslookup.items()}
+
+    return fipslookup, countylookup, countylookup_formatted, state2letters
+fipslookup, countylookup, countylookup_formatted, state2letters = createLookups()
 
 class logger():
     """
@@ -98,9 +146,11 @@ class logger():
 class dataLoader():
     """Uploads parcel files and streets into Postgres"""
 
-    def __init__(self, forceUpdate=False):
+    def __init__(self, counties_to_do=core_counties, forceUpdate=False):
         self.db = tools.dbConnection(user='adammb', db='streetwidths', host='localhost', schema='rawdata', requirePassword=False)
         self.forceUpdate = forceUpdate
+        self.counties_to_do = counties_to_do
+        self.fips_to_do = [fipslookup[cc] for cc in counties_to_do]
    
         # some counties have an extra csv or dbf data file with year built
         # format is {fips: [filename, joinfield_shp, joinfield_extra yrbuiltfield, separator]}
@@ -115,7 +165,7 @@ class dataLoader():
     def loadParcelsandRoads(self):
         """Loads parcel file to PostGres"""
         tables = self.db.list_tables()
-        for county in projections:
+        for county in self.counties_to_do:
             fips = fipslookup[county]
             proj = projections[county]
 
@@ -213,20 +263,17 @@ class dataLoader():
         if 'tracts' in self.db.list_tables() and not self.forceUpdate:
             return
 
-        tractFns = [ff for ff in os.listdir(paths['data']+'Tracts/') if ff.endswith('.shp') and ff.startswith('cb_2019')]
         self.db.execute('DROP TABLE IF EXISTS rawdata.tracts;')
-
-        for ii, tractFn in enumerate(tractFns):
-            # -a flag is omitted for first tract
-            cmd = '''shp2pgsql -s 4326:4326 {} "{}Tracts/{}" rawdata.tracts | psql -d streetwidths -U adammb'''.format('-a'*(ii>0), paths['data'], tractFn)
-            assert os.system(cmd) == 0
+        tractFn = 'cb_2019_us_tract_500k.shp'
+        cmd = '''shp2pgsql -s 4326:4326 "{}Tracts/{}" rawdata.tracts | psql -d streetwidths -U adammb'''.format(paths['data'], tractFn)
+        assert os.system(cmd) == 0
         self.db.execute('CREATE INDEX tracts_spat_idx ON rawdata.tracts USING gist (geom);')
         self.db.execute('CREATE INDEX tracts_spat_geogidx ON rawdata.tracts USING gist (geography(geom));') # to help distance matrix
 
         # drop water-only tracts
         self.db.execute('DELETE FROM rawdata.tracts WHERE aland=0;')
 
-        # add census data
+        # add census data. Right now, this is only for states in the 20-county JAPA sample
         df = self.getCensusDataFrame()
         df.drop(columns=['county','state','tract'], inplace=True)
         self.db.df2db(df, 'tracts_tmp', index=True)
@@ -238,7 +285,7 @@ class dataLoader():
         self.db.execute('ALTER TABLE tracts2 RENAME TO tracts;')
 
         # create distance matrix for interpolation
-        fipslist = ','.join(["'"+ff+"'" for ff in fipslookup.values()])
+        fipslist = ','.join(["'"+ff+"'" for ff in self.fips_to_do])
         cmd = """DROP TABLE IF EXISTS rawdata.tract_distances;
                 CREATE TABLE rawdata.tract_distances AS
                 SELECT t1.geoid geoid1, t2.geoid geoid2, ST_Distance(t1.geom::geography, t2.geom::geography) AS dist_m 
@@ -251,13 +298,20 @@ class dataLoader():
     def loadRoads(self):
         """Load OSM ways"""
         tables = self.db.list_tables()
-        if all(['osm_'+fips in tables for fips in fipslookup.values()]) and not self.forceUpdate:
+        if all(['osm_'+ff in tables for ff in self.fips_to_do]) and not self.forceUpdate:
             return
-
-        states = {'arizona':'04', 'california':'06','florida':'12', 'illinois':'17', 'massachusetts':'25', 'minnesota':'27',
-                    'new-york':'36', 'tennessee': '47', 'texas':'48','washington':'53'}
+        
+        # get state name for osm file
+        fn = 'all-geocodes-v2020.xlsx'
+        df = pd.read_excel(paths['code']+fn, engine='openpyxl', skiprows=4)
+        df = df[df['Summary Level']==40]
+        df['statename'] = df['Area Name (including legal/statistical area description)'].str.lower().str.replace(' ','-')
+        df['fips'] = df['State Code (FIPS)'].astype(str).str.zfill(2)
+        df = df[df.fips.isin(np.unique([ff[:2] for ff in self.fips_to_do]))]
+        states = df.set_index('statename').fips.to_dict()
 
         for state, fips in states.items():
+            print('Processing roads for state {}'.format(state))
             cmd = "java -Xmx5g -jar '{}osm2po-5/osm2po-core-5.2.43-signed.jar' tileSize=x cmd=c workDir='{}osm/' prefix='osm_{}' '{}Roads/{}-latest.osm.pbf'".format(paths['code'], paths['scratch'], fips, paths['data'], state)
             assert os.system(cmd)==0
             cmd = """psql -d streetwidths -h localhost -U adammb -q -f '{}osm/osm_{}_2po_4pgr.sql'""".format(paths['scratch'], fips)
@@ -267,7 +321,9 @@ class dataLoader():
         shutil.rmtree(paths['scratch']+'osm')
 
         # Create county-specific roads file with projections
-        for county, fips in fipslookup.items():
+        for county in self.counties_to_do:
+            print('Processing roads for county {}'.format(county))
+            fips = fipslookup[county]
             srid = projections[county]
             self.db.execute('DROP TABLE IF EXISTS rawdata.osm_{};'.format(fips))
             self.db.execute('''CREATE TABLE rawdata.osm_{} AS
@@ -301,7 +357,7 @@ class dataLoader():
                     FROM rawdata.tracts, rawdata.urbanized_area ua
                     WHERE ST_Intersects(tracts.geom, ua.geom)
                     AND tracts.statefp || tracts.countyfp IN ({})
-                    GROUP BY tracts.geoid;'''.format(','.join(["'"+vv+"'" for vv in fipslookup.values()]))
+                    GROUP BY tracts.geoid;'''.format(','.join(["'"+ff+"'" for ff in self.fips_to_do]))
         self.db.execute(cmd)
         self.db.execute('''UPDATE main.tractareas ta 
                             SET urbanarea = t.aland * ta.urbanarea_frc / 1e6
@@ -320,25 +376,31 @@ class dataLoader():
                 create index fbuy_sp_idx ON rawdata.fbuy USING gist((ST_ConvexHull(rast)));'''
         self.db.execute(cmd)
 
-        # load land values from Davis 2019 or 2020
-        df = self.getLandValueDf()
-        self.db.df2db(df, 'landvalues', index=True)
-
     def getLandValueDf(self):
         """
         Create a dataframe with land values for each census tract, interpolating where necessary
+
+        Upload it to postgres
         """
         outFn = paths['working'] + 'landvalues.pandas'
         if os.path.exists(outFn) and not self.forceUpdate:
-            return pd.read_pickle(outFn)
+            existing_df = pd.read_pickle(outFn)
+            existing_fips = df.reset_index().geoid.str.slice(stop=5).unique()
+        else:
+            existing_df = pd.DataFrame()
+            existing_fips = []
+        
+        fips_to_add = [fp for fp in self.fips_to_do if fp not in existing_fips ]
+        if fips_to_add == []:
+            return existing_df
 
         #landprice = pd.read_excel(paths['data']+'/Other/Davis 2019 Price of residential land.xlsx', sheet_name='Panel Census Tracts', skiprows=1)
         #landprice = landprice[landprice.Year==2018]
         inFn = paths['data']+'Other/Land-Prices_DLOS_2020_26Oct.xlsx'
-        landprice = pd.read_excel(inFn, sheet_name='Cross-Section Census Tracts', skiprows=1)
+        landprice = pd.read_excel(inFn, sheet_name='Cross-Section Census Tracts', engine='openpyxl', skiprows=1)
         landprice['geoid'] = landprice['Census Tract'].astype(str).str.zfill(11)
         landprice['fips'] = landprice.geoid.str.slice(stop=5)
-        landprice = landprice[landprice.fips.isin(fipslookup.values())]  # restrict to counties in our dataset
+        landprice = landprice[landprice.fips.isin(fips_to_add)]  # restrict to counties in our dataset
 
         # note: standardized is to 1/4 acre lots
         landprice.rename(columns={'Land Value\n(Per Acre, As-Is)':'landvalue_acre', "Land Value\n(1/4 Acre Lot, Standardized)":'landvalue_acre_std'}, inplace=True)
@@ -375,7 +437,7 @@ class dataLoader():
         landprice = pd.concat([landprice, interpPrices])
 
         # uprate prices to 2019 values based on the county-level change
-        countyPrices = pd.read_excel(inFn, sheet_name='Panel Counties', skiprows=1)
+        countyPrices = pd.read_excel(inFn, sheet_name='Panel Counties', engine='openpyxl', skiprows=1)
         countyPrices['FIPS'] = countyPrices['FIPS'].astype(str).str.zfill(5)
         countyPrices.set_index('FIPS', inplace=True)
         countyPrices.rename(columns={'Land Value\n(Per Acre, As-Is)':'landvalue_acre', "Land Value\n(1/4 Acre Lot, Standardized)":'landvalue_acre_std'}, inplace=True)
@@ -386,19 +448,25 @@ class dataLoader():
             landprice[col] = landprice[col]*landprice[col+'_change']
         
         landprice = landprice[['landvalue_acre','landvalue_acre_std','interpolated']]
+        # add in previously loaded counties
+        landprice = pd.concat([existing_df, landprice ])
         landprice.to_pickle(outFn)
+
+        # upload to postgres
+        self.db.df2db(landprice, 'landvalues', index=True)
 
         return landprice
 
     def getCensusDataFrame(self):
-        """returns a df of the tables of interest for the counties of interest"""
+        """returns a df of the tables of interest for the counties of interest
+        Currently, only for the 20-county JAPA sample"""
 
         outFn = paths['working']+'census_compiled.pandas'
         if os.path.exists(outFn) and not self.forceUpdate:
             return pd.read_pickle(outFn) 
 
-        statesToDo = np.unique([fp[:2] for fp in fipslookup.values()])
-        state2letters = {'04':'az','06':'ca','12':'fl','17':'il','25':'ma','27':'mn','36':'ny','47':'tn','48':'tx','53':'wa',}
+        core_fips = [fipslookup[cc] for cc in core_counties]
+        statesToDo = np.unique([fp[:2] for fp in core_fips])
         path = paths['data']+'Census/'
 
         colsToUse = {'B01003_001':'totalpop', 'B11001_001':'totalhhs', 'B25001_001':'n_units',
@@ -416,7 +484,7 @@ class dataLoader():
         statedfs = {}
         for statefips in statesToDo:
             state2letter = state2letters[statefips]
-            counties = [cc[2:] for cc in fipslookup.values() if cc[:2]==statefips]
+            counties = [cc[2:] for cc in core_fips if cc[:2]==statefips]
             geo = pd.read_csv(path+state2letter+'/'+geoFile.replace('XX',state2letter),header=None, usecols=list(range(15))+[48,49], encoding='latin-1')
             geo.columns=geoHeaders.columns
 
@@ -478,12 +546,15 @@ class dataLoader():
 
 class createStreetPolygons():
     """Creates polygons of streets based on the voids between parcels, using Voronoi polygons"""
-    def __init__(self, forceUpdate=False):
+    def __init__(self, counties_to_do=core_counties, forceUpdate=False):
         self.logger = logger('voronoi')
         self.db = tools.dbConnection(user='adammb', db='streetwidths', host='localhost', schema='main', requirePassword=False, verbose=True, logger=self.logger)
         self.db_rawdata = tools.dbConnection(user='adammb', db='streetwidths', host='localhost', schema='rawdata', requirePassword=False, verbose=True, logger=self.logger)
         self.forceUpdate = forceUpdate
         self.minEdgeLength = 15  # how long does an edge have to be to be included?
+
+        self.counties_to_do = counties_to_do
+        self.fips_to_do = [fipslookup[cc] for cc in counties_to_do]
 
     def doCounty(self, fips):
         """Runs the analysis for one county"""
@@ -713,7 +784,7 @@ class createStreetPolygons():
                         COUNT(*) as npts, percentile_cont(0.5) within group (order by dist)*2 AS median_width, -- median distance * 2
                         Null::float as length, Null::float as netlength, Null::float AS area, Null::float AS perimeter,
                         Null::float as intersection_width, Null::bool as urbanized, 
-                        percentile_disc(0.5) WITHIN GROUP (ORDER BY fbuy) AS fbuy,
+                        percentile_disc(0.5) WITHIN GROUP (ORDER BY fbuy) AS fbuy
                         FROM main.streetpts_{fips} 
                         GROUP BY osm_id;'''.format(fips=fips)
         self.db.execute(cmd)
@@ -827,7 +898,7 @@ class createStreetPolygons():
 
     def doAllCounties(self):
         """Wrapper for doCounty"""
-        for fips in fipslookup.values():
+        for fips in self.fips_to_do:
             self.doCounty(fips)
 
 class censusGetter():
@@ -858,7 +929,7 @@ class censusGetter():
 class analysis():
     """Produces charts, etc. for paper"""
 
-    def __init__(self, cutoff=25, bw=False):
+    def __init__(self, counties_to_do=core_counties, cutoff=25, bw=False):
         """
         Cutoff is minimum length of residential streets (25m)
         """
@@ -875,6 +946,9 @@ class analysis():
                         31:'tertiary', 32:'tertiary_link', 41:'residential', 42:'road', 
                         43:'unclassified', 51:'service', 63:'living_street'}
 
+        self.counties_to_do = counties_to_do
+        self.fips_to_do = [fipslookup[cc] for cc in counties_to_do]
+
     def getDf(self, urbanized=True, saveDf=False):
         """Gets dataframe of streets with widths and tract id from postgres\
             urbanized=True restrict to streets that intersect census-defined urbanized area
@@ -886,7 +960,7 @@ class analysis():
 
         print ('Compiling street dataframe')
         dfs, streets, streettotracts = {}, {}, {}
-        for fips in fipslookup.values():
+        for fips in self.fips_to_do:
             streets[fips] = self.db.execfetchDf('SELECT {fips} as fips, osm_id, clazz, deadend, npts, median_width, length, netlength, area, perimeter, intersection_width, urbanized, fbuy, streetvalue_m, streetvalue_m_std, value_std_per_25ft, landvalue_acre, landvalue_acre_std, pop_sqkm, is_residential, width_ft, ignore FROM main.osm_metrics_{fips};'''.format(fips=fips))
             assert streets[fips]['osm_id'].is_unique
         
@@ -1020,7 +1094,7 @@ class analysis():
         main_counties = ['all','04013','12086','06071',] # ['all','12086','06071','48439']  # counties to plot in main figure
         plotHist(fig, axes, main_counties, 'Fig3_width_distributions.pdf')
         fig, axes = plt.subplots(10,2, figsize = (7,10))
-        plotHist(fig, axes, fipslookup.values(), 'FigA4_width_distributions.pdf')
+        plotHist(fig, axes, self.fips_to_do, 'FigA4_width_distributions.pdf')
 
         # get back the original with the areas of short and overly-wide streets
         dfr = self.dfr.set_index('fips').copy()   
@@ -1057,7 +1131,7 @@ class analysis():
         fig, ax = plt.subplots(figsize=figsizes['full'])
         rollmean(dfr.set_index('yr_5pc'), 1900).plot(ax=ax, label='All counties (parcel-based date)')
         rollmean(dfr.set_index('built_median'), 1940).plot(ax=ax, label='All counties (census-based date)')
-        for fips in fipslookup.values():
+        for fips in self.fips_to_do:
             if fips in with_yrbuilt:
                 rollmean(dfr[dfr.fips==fips].set_index('yr_5pc'), 1900).plot(ax=ax, color='0.6', lw=0.5, label='_nolegend_')
             elif fips in ['06085','53033']: # include in legend
@@ -1084,7 +1158,7 @@ class analysis():
         fig, ax = plt.subplots(figsize=figsizes['full'])
         rollstd(dfr.set_index('yr_5pc'), 1900).plot(ax=ax, label='All counties (parcel-based date)')
         rollstd(dfr.set_index('built_median'), 1940).plot(ax=ax, label='All counties (census-based date)')
-        for fips in fipslookup.values():
+        for fips in self.fips_to_do:
             if fips in with_yrbuilt:
                 rollstd(dfr[dfr.fips==fips].set_index('yr_5pc'), 1900).plot(ax=ax, color='0.6', lw=0.5, label='_nolegend_')
             elif fips in ['06085','53033']: # include in legend
@@ -1120,7 +1194,7 @@ class analysis():
         plotDf = (dfr.width_ft*dfr.netlength).groupby(level=0).sum()/dfr.groupby(level=0).netlength.sum()
         plotDf.plot(ax=ax, color='k', lw=3, label='All counties')
 
-        for fips in fipslookup.values():
+        for fips in self.fips_to_do:
             mask = dfr.fips==fips
             plotDf = (dfr[mask].width_ft*dfr[mask].netlength).groupby(level=0).sum()/dfr[mask].groupby(level=0).netlength.sum()
             # limit to years with > n streets
@@ -1145,7 +1219,7 @@ class analysis():
         # STANDARD DEVIATION OF WIDTH
         fig, ax = plt.subplots(figsize=figsizes['full'])
         dfr.groupby(level=0).median_width.std().plot(ax=ax, label='All counties')
-        for fips in fipslookup.values():
+        for fips in self.fips_to_do:
             plotDf = dfr[dfr.fips==fips].median_width
             yrcounts = dfr[dfr.fips==fips].groupby(level=0).size()
             plotDf = plotDf[yrcounts>=20]
@@ -1309,7 +1383,8 @@ def validation():
     db = tools.dbConnection(user='adammb', db='streetwidths', host='localhost', schema='main', requirePassword=False)
     db.execute('SELECT setseed(0.5);')
     dfs = {}
-    for fips in fipslookup.values():
+    fipslist = [fipslookup[cc] for cc in core_counties]
+    for fips in fipslist:
         print('Getting sample for county {}'.format(fips))
         cmd = '''SELECT {fips} AS fips, p.osm_id, p.sid, p.frc, o.median_width, 
                     ST_X(ST_Transform(p.geom, 4326)) AS lon, ST_Y(ST_Transform(p.geom, 4326)) AS lat
@@ -1355,9 +1430,9 @@ def atlasChart(bw=False):
     fig.savefig(paths['graphics']+'Fig1_atlas_widths'+'_bw'*bw+'.pdf', tight_layout=True)
 
 def export_for_mapbox(fipslist = None):
-    """Exports a GPKG for the Mapbox site"""
+    """Exports a GPKG for the Mapbox site or for other users"""
     if fipslist is None:
-        fipslist = list(fipslookup.values())
+        fipslist = [fipslookup[cc] for cc in core_counties]
     if isinstance(fipslist,str):
         fipslist = [fipslist]
     assert isinstance(fipslist, list)
@@ -1376,7 +1451,7 @@ def export_for_tableau():
     """Gets all the tsvs for Mapbox, merges them, and adds a county name field
     Note that the value histogram is exported in analysis()"""
     outPath = paths['website'] + 'Data/'
-    fipslist = list(fipslookup.values())
+    fipslist = [fipslookup[cc] for cc in core_counties]
     dfs = []
     for fips in fipslist:
         df = pd.read_csv(outPath+'osm_metrics_{}.tsv'.format(fips), sep='\t', index_col=None)
@@ -1391,13 +1466,21 @@ def export_for_tableau():
     aggdf = df.groupby(['county','countyfips','fbuy','is_residential','width_ft'])[['length_ft','streetvalue_m_std']].sum().reset_index()
     aggdf.to_csv(outPath+'metrics_aggregated.tsv', sep='\t', index=False)
 
+def run_all():
+    """Run all analysis for the 20-counties in the JAPA sample"""
+    dataLoader().loadAll()
+    createStreetPolygons().doAllCounties()
+    analysis().plotAll()
+    validation()
+    atlasChart()
+    atlasChart(bw=True)
 
+def run_counties(counties_to_do):
+    dataLoader(counties_to_do=counties_to_do).loadAll()
+    createStreetPolygons(counties_to_do=counties_to_do).doAllCounties() 
+    export_for_mapbox([fipslookup[cc] for cc in counties_to_do])  
 
 if __name__ == '__main__':
-   dataLoader().loadAll()
-   createStreetPolygons().doAllCounties()
-   analysis().plotAll()
-   validation()
-   atlasChart()
-   atlasChart(bw=True)
+    run_all()
+
 
