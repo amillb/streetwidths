@@ -1046,7 +1046,9 @@ class analysis():
         aggDf = pd.concat([aggDfs[0], aggDfs[1]])
         aggDf['Area (percent)'] = aggDf.apply(lambda x: x['Area (km2)'] / self.countyareas[x.name[1]], axis=1) *100
 
-        tableDf = aggDf.loc[True][['Median width (ft)','Mean width (ft)','Mean width (ft) (weighted)','Length (km)','Area (km2)','Area (percent)']].round(1).astype(str)
+        tableDf = aggDf.reset_index(level=1).loc[True]
+        tableDf.set_index('fips', append=True)
+        tableDf = tableDf[['fips','Median width (ft)','Mean width (ft)','Mean width (ft) (weighted)','Length (km)','Area (km2)','Area (percent)']].round(1).astype(str)
         tableDf['All streets area (percent)'] = aggDf.groupby(level=1)['Area (percent)'].sum().round(1).astype(str)
         tableDf.reset_index(inplace=True)
         tableDf['County'] = tableDf.fips.map(countylookup_formatted)
@@ -1095,6 +1097,12 @@ class analysis():
         plotHist(fig, axes, main_counties, 'Fig3_width_distributions.pdf')
         fig, axes = plt.subplots(10,2, figsize = (7,10))
         plotHist(fig, axes, self.fips_to_do, 'FigA4_width_distributions.pdf')
+
+        # one for policy brief
+        fig, axes = plt.subplots(2,2, figsize = figsizes['full'])
+        pb_counties = ['06001','06085','06071','06059'] 
+        plotHist(fig, axes, pb_counties, 'FigPB_width_distributions.pdf')
+
 
         # get back the original with the areas of short and overly-wide streets
         dfr = self.dfr.set_index('fips').copy()   
