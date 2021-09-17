@@ -1099,8 +1099,8 @@ class analysis():
         plotHist(fig, axes, self.fips_to_do, 'FigA4_width_distributions.pdf')
 
         # one for policy brief
-        fig, axes = plt.subplots(2,2, figsize = figsizes['full'])
-        pb_counties = ['06001','06085','06071','06059'] 
+        fig, axes = plt.subplots(3,2, figsize = figsizes['full'])
+        pb_counties = ['06001','06037','06059','06071','06073','06085'] 
         plotHist(fig, axes, pb_counties, 'FigPB_width_distributions.pdf')
 
 
