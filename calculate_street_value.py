@@ -1406,8 +1406,15 @@ def validation():
     df['measured_width'] = ''
     df.to_csv(outFn, index=False)
 
-def atlasChart(bw=False):
-    """Bar chart of street widths based on Atlas of Urban Expansion data"""
+def atlasChart(bw=False, figsize=None):
+    """Bar chart of street widths based on Atlas of Urban Expansion data
+    figsize = None uses defaults, otherwise, pass a tuple
+    For website, 1648 x 927 pixels = (1648/300, 927/300)
+    """
+
+    if figsize is None:
+        figsize = figsizes['short'] 
+
     colors = ['0.1','0.3'] if bw else c2s
     colsToUse = ['Average Road Width (meters)','Unnamed: 11_level_0','City Name','Country','Region']
     df = pd.read_csv(paths['atlas']+'Blocks_and_Roads_Table_1.csv', header=[0,1])[colsToUse]
@@ -1420,7 +1427,7 @@ def atlasChart(bw=False):
 
     means = df.groupby('us')['Width_1990-2015'].mean()
 
-    fig, ax = plt.subplots(figsize = figsizes['short'])
+    fig, ax = plt.subplots(figsize = figsize)
     #df[['Width_pre1990','Width_1990-2015']].plot.bar(rot=0)
     df['Width_1990-2015'].plot.bar(rot=0, ax = ax, color=df.color)
     ax.set_xticks([92,193])
@@ -1434,6 +1441,7 @@ def atlasChart(bw=False):
     ax.text(10,39.5,'US city mean', color=colors[0])
 
     fig.tight_layout()
+    fig.savefig('/Users/adammb/Desktop/fig_web_atlaswidths.png', dpi=600, tight_layout=True)
     fig.savefig(paths['graphics']+'Fig1_atlas_widths'+'_bw'*bw+'.jpg', dpi=600, tight_layout=True)
     fig.savefig(paths['graphics']+'Fig1_atlas_widths'+'_bw'*bw+'.pdf', tight_layout=True)
 
