@@ -1,12 +1,14 @@
 # osm2po
 osm2po-5/*
 !osm2po-5/osm2po.config
+!osm2po-5/README.md
 
 # Data files
 Data/Tracts/*
 Data/Parcel_data/*
 Data/Roads/*
 Data/Other/*
+Data/FBUY
 !Data/*/README.md
 
 # Generated directories
