@@ -1527,6 +1527,11 @@ def run_counties(counties_to_do):
 
 if __name__ == '__main__':
     # TODO: Look for counties in Data and run them (print feedback)
-    run_counties(["alameda_ca"])
+    counties_to_do = []
+    parcel_data_path = paths["Data"] + "Parcel_data"
+    for file in os.listdir(parcel_data_path):
+        if os.path.isdir(parcel_data_path + file):
+            counties_to_do.append(file)
+    run_counties(counties_to_do)
 
 

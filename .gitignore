@@ -7,6 +7,7 @@ Data/Tracts/*
 Data/Parcel_data/*
 Data/Roads/*
 Data/Other/*
+!Data/*/README.md
 
 # Generated directories
 temp
