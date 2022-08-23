@@ -1,0 +1,14 @@
+name: streetwidths
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - numpy
+  - pandas
+  - matplotlib
+  - gdal
+  - seaborn
+  - conda-build
+  - psycopg2
+  - openpyxl
+  - sqlalchemy

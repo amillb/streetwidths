@@ -49,16 +49,22 @@ projections = {'alameda_ca':3493, 'bexar_tx':3673, 'cook_il':3528, 'dallas_tx':3
                'miami_dade_fl':3511, 'middlesex_ma':3585, 'orange_ca':3499, 'queens_ny':3627, 'riverside_ca':3499,
             'san_bernardino_ca':3497, 'san_diego_ca':3499, 'san_francisco_ca':3493, 'santa_clara_ca':3493, 'shelby_tn':3661, 'tarrant_tx':3669}
 
+# TODO: Extract postgres username to a variable. Ask user for db name, username, etc.
+
 def definePaths():
-    basepath = '/Users/adammb/Documents/GDrive/Research/Street widths/'
-    datapath = '/Volumes/Data/Streets/'
-    paths = {'data':datapath+'Raw_data/',
-             'atlas':basepath+'Data/',
-             'code':basepath+'Code/',
-             'scratch':datapath+'Scratch/',
-             'working':basepath+'Working/',
-             'graphics':basepath+'Figures/',
-             'website':basepath+'Streets_website/',}
+    os.makedirs("./temp", exist_ok=True)
+    os.makedirs("./Working", exist_ok=True)
+    os.makedirs("./Output/Data", exist_ok=True)
+    path_format = os.path.expanduser("~/Documents/streetwidths/{}/")
+    paths = {
+        'data': "./Data/", #path_format.format("Data"),
+        'atlas': None, #path_format.format("Atlas"),
+        'code': "./", #path_format.format("Code"),
+        'scratch': "./temp/", #path_format.format("Scratch"),
+        'working': "./Working/", #path_format.format("Working"),
+        'graphics': None, #path_format.format("Graphics"),
+        'website': "./Output/", #path_format.format("Website"),
+    }
     return paths
 paths = definePaths()
 
@@ -161,6 +167,16 @@ class dataLoader():
                           '53033': ['EXTR_ResBldg.csv', ['MAJOR','MINOR'], ['Major','Minor'],'YrBuilt',',']}
         # parcel identifiers for right of way. first is original field name (may be capitalized). second is query
         self.rowParcel = {'48201':['parcel_typ','parcel_typ=6'], '06065':['APN',"apn='RW'"],'48439':['PARCELTYPE','parceltype=3'] }
+
+        # if needed, add  srid 97965 to the spatial references in PostGIS
+        if self.db.execfetch('SELECT COUNT(*) from spatial_ref_sys WHERE srid=97965;')[0][0]==0:
+            self.db.execute('''INSERT into spatial_ref_sys (srid, auth_name,
+                            auth_srid, proj4text, srtext) values ( 97965,
+                            'sr-org', 7965, '+proj=aea +lat_1=29.5 +lat_2=45.5
+                            +lat_0=23 +lon_0=-96 +x_0=0 +y_0=0 +ellps=GRS80
+                            +datum=NAD83 +units=m +no_defs ', 'PROJCS["NAD83 /
+                            Albers
+                            NorthAm",GEOGCS["NAD83",DATUM["North_American_Datum_1983",SPHEROID["GRS_1980",6378137,298.257222101]],PRIMEM["Greenwich",0],UNIT["Decimal_Degree",0.0174532925199433]],PROJECTION["Albers_conic_equal_area"],PARAMETER["central_meridian",-96.0],PARAMETER["latitude_of_origin",23],PARAMETER["standard_parallel_1",29.5],PARAMETER["standard_parallel_2",45.5],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["Meter",1],AUTHORITY["EPSG","42303"]]');''')
 
     def loadParcelsandRoads(self):
         """Loads parcel file to PostGres"""
@@ -274,15 +290,20 @@ class dataLoader():
         self.db.execute('DELETE FROM rawdata.tracts WHERE aland=0;')
 
         # add census data. Right now, this is only for states in the 20-county JAPA sample
-        df = self.getCensusDataFrame()
-        df.drop(columns=['county','state','tract'], inplace=True)
-        self.db.df2db(df, 'tracts_tmp', index=True)
-        self.db.execute('''DROP TABLE IF EXISTS tracts2;
-                           CREATE TABLE tracts2 AS
-                           SELECT * from tracts LEFT JOIN tracts_tmp USING (geoid);''')
-        self.db.execute('DROP TABLE tracts_tmp;')
-        self.db.execute('DROP TABLE tracts;')
-        self.db.execute('ALTER TABLE tracts2 RENAME TO tracts;')
+        try:
+            df = self.getCensusDataFrame()
+            df.drop(columns=['county','state','tract'], inplace=True)
+            self.db.df2db(df, 'tracts_tmp', index=True)
+            self.db.execute('''DROP TABLE IF EXISTS tracts2;
+                            CREATE TABLE tracts2 AS
+                            SELECT * from tracts LEFT JOIN tracts_tmp USING (geoid);''')
+            self.db.execute('DROP TABLE tracts_tmp;')
+            self.db.execute('DROP TABLE tracts;')
+            self.db.execute('ALTER TABLE tracts2 RENAME TO tracts;')
+        except FileNotFoundError as e:
+            # TODO: Rerun to test this.
+            self.db.execute('ALTER TABLE tracts ADD column pop_sqkm real, ADD COLUMN units_sqkm real;')
+            print(f'Census data not found: {e}')
 
         # create distance matrix for interpolation
         fipslist = ','.join(["'"+ff+"'" for ff in self.fips_to_do])
@@ -313,8 +334,13 @@ class dataLoader():
         for state, fips in states.items():
             print('Processing roads for state {}'.format(state))
             cmd = "java -Xmx5g -jar '{}osm2po-5/osm2po-core-5.2.43-signed.jar' tileSize=x cmd=c workDir='{}osm/' prefix='osm_{}' '{}Roads/{}-latest.osm.pbf'".format(paths['code'], paths['scratch'], fips, paths['data'], state)
+            # Check for Windows
+            if os.name == "nt":
+                cmd = "powershell " + cmd
             assert os.system(cmd)==0
             cmd = """psql -d streetwidths -h localhost -U adammb -q -f '{}osm/osm_{}_2po_4pgr.sql'""".format(paths['scratch'], fips)
+            if os.name == "nt":
+                cmd = "powershell " + cmd
             assert os.system(cmd)==0
             self.db.execute('CREATE INDEX osm_{}_2po_4pgr_spat_idx ON public.osm_{}_2po_4pgr USING gist (geom_way);'.format(fips, fips))
 
@@ -385,7 +411,7 @@ class dataLoader():
         outFn = paths['working'] + 'landvalues.pandas'
         if os.path.exists(outFn) and not self.forceUpdate:
             existing_df = pd.read_pickle(outFn)
-            existing_fips = df.reset_index().geoid.str.slice(stop=5).unique()
+            existing_fips = existing_df.reset_index().geoid.str.slice(stop=5).unique()
         else:
             existing_df = pd.DataFrame()
             existing_fips = []
@@ -541,7 +567,10 @@ class dataLoader():
         self.loadParcelsandRoads()
         self.loadRoads()
         self.loadOther()
-        _ = self.getCensusDataFrame()
+        try:
+            _ = self.getCensusDataFrame()
+        except FileNotFoundError as e:
+            print(f'Census data not found: {e}')
         _ = self.getLandValueDf()
 
 class createStreetPolygons():
@@ -627,7 +656,7 @@ class createStreetPolygons():
         cmd = '''UPDATE main.streetpts_{fips} t0
                 SET fbuy = ST_Value(rast, ST_Transform(geom,97965)) 
                 FROM rawdata.fbuy
-                WHERE ST_Intersects(rast, ST_Transform(geom,97965));'''.format(fips=fips)
+                WHERE ST_Intersects(rast, ST_Transform(geom,97965)) AND rast&&ST_Transform(geom, 97965);'''.format(fips=fips)
         self.db.execute(cmd)
         self.db.execute('UPDATE main.streetpts_{fips} SET fbuy = Null WHERE fbuy<2;'.format(fips=fips))
 
@@ -879,7 +908,7 @@ class createStreetPolygons():
             LEFT JOIN 
             (
             SELECT osm_id, AVG(landvalue_acre) AS landvalue_acre, AVG(landvalue_acre_std) AS landvalue_acre_std,
-                AVG(interpolated::int)::real AS interpolated, AVG(built_median) AS built_median,
+                AVG(interpolated::int)::real AS interpolated --, AVG(built_median) AS built_median,
                 AVG(units_sqkm) AS units_sqkm, AVG(pop_sqkm) AS pop_sqkm 
             FROM main.streettotract_{fips} s2t
             LEFT JOIN rawdata.landvalues lv USING(geoid)
@@ -1497,6 +1526,7 @@ def run_counties(counties_to_do):
     export_for_mapbox([fipslookup[cc] for cc in counties_to_do])  
 
 if __name__ == '__main__':
-    run_all()
+    # TODO: Look for counties in Data and run them (print feedback)
+    run_counties(["alameda_ca"])
 
 
