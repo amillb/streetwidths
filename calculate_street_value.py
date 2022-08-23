@@ -49,21 +49,21 @@ projections = {'alameda_ca':3493, 'bexar_tx':3673, 'cook_il':3528, 'dallas_tx':3
                'miami_dade_fl':3511, 'middlesex_ma':3585, 'orange_ca':3499, 'queens_ny':3627, 'riverside_ca':3499,
             'san_bernardino_ca':3497, 'san_diego_ca':3499, 'san_francisco_ca':3493, 'santa_clara_ca':3493, 'shelby_tn':3661, 'tarrant_tx':3669}
 
-# TODO: Extract postgres username to a variable. Ask user for db name, username, etc.
+# TODO: Extract postgres username to a variable
+postgres_user = "postgres"
 
 def definePaths():
     os.makedirs("./temp", exist_ok=True)
     os.makedirs("./Working", exist_ok=True)
     os.makedirs("./Output/Data", exist_ok=True)
-    path_format = os.path.expanduser("~/Documents/streetwidths/{}/")
     paths = {
-        'data': "./Data/", #path_format.format("Data"),
-        'atlas': None, #path_format.format("Atlas"),
-        'code': "./", #path_format.format("Code"),
-        'scratch': "./temp/", #path_format.format("Scratch"),
-        'working': "./Working/", #path_format.format("Working"),
-        'graphics': None, #path_format.format("Graphics"),
-        'website': "./Output/", #path_format.format("Website"),
+        'data': "./Data/",
+        'atlas': None,
+        'code': "./",
+        'scratch': "./temp/",
+        'working': "./Working/",
+        'graphics': None,
+        'website': "./Output/",
     }
     return paths
 paths = definePaths()
@@ -153,7 +153,7 @@ class dataLoader():
     """Uploads parcel files and streets into Postgres"""
 
     def __init__(self, counties_to_do=core_counties, forceUpdate=False):
-        self.db = tools.dbConnection(user='adammb', db='streetwidths', host='localhost', schema='rawdata', requirePassword=False)
+        self.db = tools.dbConnection(postgres_user, db='streetwidths', host='localhost', schema='rawdata', requirePassword=False)
         self.forceUpdate = forceUpdate
         self.counties_to_do = counties_to_do
         self.fips_to_do = [fipslookup[cc] for cc in counties_to_do]
@@ -209,7 +209,7 @@ class dataLoader():
             ds = None # to close it
 
             print('Loading {}: {}'.format(county, fips))
-            cmd = '''ogr2ogr -f "PostgreSQL" "PG:dbname=streetwidths user=adammb" {} -overwrite -nln rawdata.parcels_{} -select "{}" -nlt PROMOTE_TO_MULTI -lco GEOMETRY_NAME=geom -t_srs EPSG:{}'''.format(shpFn, fips, field_names, proj)
+            cmd = f'''ogr2ogr -f "PostgreSQL" "PG:dbname=streetwidths user={postgres_user}" {shpFn} -overwrite -nln rawdata.parcels_{fips} -select "{field_names}" -nlt PROMOTE_TO_MULTI -lco GEOMETRY_NAME=geom -t_srs EPSG:{proj}'''
             assert os.system(cmd) == 0
              
             if fips in self.rowParcel:  # delete ROW parcels
@@ -269,7 +269,7 @@ class dataLoader():
                     self.db.execute('ALTER TABLE rawdata.parcels_{} RENAME {} to yearbuilt;'.format(fips, col))
 
             if 0:   # loads the census roads, but we don't use them 
-                cmd = '''ogr2ogr -f "PostgreSQL" "PG:dbname=streetwidths user=adammb" {}Roads/tl_2019_{}_roads.shp -overwrite -nln rawdata.roads_{} -nlt PROMOTE_TO_MULTI -lco GEOMETRY_NAME=geom -t_srs EPSG:{}'''.format(paths['data'], fips, fips, proj)
+                cmd = f'''ogr2ogr -f "PostgreSQL" "PG:dbname=streetwidths user={postgres_user}" {paths['data']}Roads/tl_2019_{fips}_roads.shp -overwrite -nln rawdata.roads_{fips} -nlt PROMOTE_TO_MULTI -lco GEOMETRY_NAME=geom -t_srs EPSG:{proj}'''
                 assert os.system(cmd) == 0
                 self.db.execute('CREATE INDEX roads_{}_spat_idx ON rawdata.roads_{} USING gist (geom);'.format(fips, fips))
 
@@ -281,7 +281,7 @@ class dataLoader():
 
         self.db.execute('DROP TABLE IF EXISTS rawdata.tracts;')
         tractFn = 'cb_2019_us_tract_500k.shp'
-        cmd = '''shp2pgsql -s 4326:4326 "{}Tracts/{}" rawdata.tracts | psql -d streetwidths -U adammb'''.format(paths['data'], tractFn)
+        cmd = f'''shp2pgsql -s 4326:4326 "{paths['data']}Tracts/{tractFn}" rawdata.tracts | psql -d streetwidths -U {postgres_user}'''
         assert os.system(cmd) == 0
         self.db.execute('CREATE INDEX tracts_spat_idx ON rawdata.tracts USING gist (geom);')
         self.db.execute('CREATE INDEX tracts_spat_geogidx ON rawdata.tracts USING gist (geography(geom));') # to help distance matrix
@@ -301,7 +301,7 @@ class dataLoader():
             self.db.execute('DROP TABLE tracts;')
             self.db.execute('ALTER TABLE tracts2 RENAME TO tracts;')
         except FileNotFoundError as e:
-            # TODO: Rerun to test this.
+            # TODO: Rerun to test this
             self.db.execute('ALTER TABLE tracts ADD column pop_sqkm real, ADD COLUMN units_sqkm real;')
             print(f'Census data not found: {e}')
 
@@ -338,7 +338,7 @@ class dataLoader():
             if os.name == "nt":
                 cmd = "powershell " + cmd
             assert os.system(cmd)==0
-            cmd = """psql -d streetwidths -h localhost -U adammb -q -f '{}osm/osm_{}_2po_4pgr.sql'""".format(paths['scratch'], fips)
+            cmd = f"""psql -d streetwidths -h localhost -U {postgres_user} -q -f '{paths['scratch']}osm/osm_{fips}_2po_4pgr.sql'"""
             if os.name == "nt":
                 cmd = "powershell " + cmd
             assert os.system(cmd)==0
@@ -372,7 +372,7 @@ class dataLoader():
         and maybe other things that will get added later on"""
         if 'urbanized_area' in self.db.list_tables():
             return
-        cmd = '''shp2pgsql -s 4326:4326 "{}Other/tl_2019_us_uac10.shp" rawdata.urbanized_area | psql -d streetwidths -U adammb'''.format(paths['data'])
+        cmd = f'''shp2pgsql -s 4326:4326 "{paths['data']}Other/tl_2019_us_uac10.shp" rawdata.urbanized_area | psql -d streetwidths -U {postgres_user}'''
         assert os.system(cmd) == 0
         self.db.execute('CREATE INDEX urbanized_area_spat_idx ON rawdata.urbanized_area USING gist (geom);')        
 
@@ -392,7 +392,7 @@ class dataLoader():
         # load FBUY raster
         # reprojection process was trial and error
         # note: srid 97965 inserted manually using INSERT statement here: https://spatialreference.org/ref/sr-org/7965/
-        cmd = 'raster2pgsql -d -C -M -I -t 100x100 {}FBUY/data/FBUY.tif rawdata.fbuytmp | psql -d streetwidths -U adammb'.format(paths['data'])
+        cmd = f'raster2pgsql -d -C -M -I -t 100x100 {paths["data"]}FBUY/data/FBUY.tif rawdata.fbuytmp | psql -d streetwidths -U {paths["data"]}'
         assert os.system(cmd) == 0
         cmd = '''DROP TABLE IF EXISTS rawdata.fbuy;
                 CREATE TABLE rawdata.fbuy AS
@@ -577,8 +577,8 @@ class createStreetPolygons():
     """Creates polygons of streets based on the voids between parcels, using Voronoi polygons"""
     def __init__(self, counties_to_do=core_counties, forceUpdate=False):
         self.logger = logger('voronoi')
-        self.db = tools.dbConnection(user='adammb', db='streetwidths', host='localhost', schema='main', requirePassword=False, verbose=True, logger=self.logger)
-        self.db_rawdata = tools.dbConnection(user='adammb', db='streetwidths', host='localhost', schema='rawdata', requirePassword=False, verbose=True, logger=self.logger)
+        self.db = tools.dbConnection(postgres_user, db='streetwidths', host='localhost', schema='main', requirePassword=False, verbose=True, logger=self.logger)
+        self.db_rawdata = tools.dbConnection(postgres_user, db='streetwidths', host='localhost', schema='rawdata', requirePassword=False, verbose=True, logger=self.logger)
         self.forceUpdate = forceUpdate
         self.minEdgeLength = 15  # how long does an edge have to be to be included?
 
@@ -962,7 +962,7 @@ class analysis():
         """
         Cutoff is minimum length of residential streets (25m)
         """
-        self.db = tools.dbConnection(user='adammb', db='streetwidths', host='localhost', schema='main', requirePassword=False)
+        self.db = tools.dbConnection(postgres_user, db='streetwidths', host='localhost', schema='main', requirePassword=False)
         self.bw = bw
         self.streetDf = None # populated in self.getDf
         self.tractareas = self.db.execfetchDf('SELECT * from main.tractareas;')
@@ -1417,7 +1417,7 @@ def validation():
         return
         
     # Select random sample of points
-    db = tools.dbConnection(user='adammb', db='streetwidths', host='localhost', schema='main', requirePassword=False)
+    db = tools.dbConnection(postgres_user, db='streetwidths', host='localhost', schema='main', requirePassword=False)
     db.execute('SELECT setseed(0.5);')
     dfs = {}
     fipslist = [fipslookup[cc] for cc in core_counties]
@@ -1482,14 +1482,14 @@ def export_for_mapbox(fipslist = None):
         fipslist = [fipslist]
     assert isinstance(fipslist, list)
 
-    db = tools.dbConnection(user='adammb', db='streetwidths', host='localhost', schema='main', requirePassword=False)
+    db = tools.dbConnection(postgres_user, db='streetwidths', host='localhost', schema='main', requirePassword=False)
     outPath = paths['website'] + 'Data/'
     for fips in fipslist:
         print('Exporting county {}'.format(fips))
         df = db.execfetchDf('SELECT osm_id, urbanized, ignore, fbuy, clazz, is_residential, length*{m2ft} AS length_ft, netlength*{m2ft} AS netlength_ft, width_ft, streetvalue_m_std, value_std_per_25ft FROM osm_metrics_{fips} WHERE ignore=False;'.format(m2ft=m2ft, fips=fips))
         df.width_ft = df.width_ft.round()
         df.to_csv(outPath+'osm_metrics_{}.tsv'.format(fips), sep='\t')
-        cmd = '''ogr2ogr -f "GPKG" "{outPath}osm_{fips}.gpkg" "PG:dbname=streetwidths user=adammb" "rawdata.osm_{fips}"'''.format(outPath=outPath, fips=fips)
+        cmd = f'''ogr2ogr -f "GPKG" "{outPath}osm_{fips}.gpkg" "PG:dbname=streetwidths user={postgres_user}" "rawdata.osm_{fips}"'''
         assert os.system(cmd)==0    
 
 def export_for_tableau():
