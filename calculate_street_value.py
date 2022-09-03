@@ -14,6 +14,8 @@ Input data must be added to the datapath folder (defined in definePaths) as foll
 
 """
 
+postgres_user = "postgres"
+
 from numpy import core
 import pandas as pd
 import math
@@ -49,20 +51,19 @@ projections = {'alameda_ca':3493, 'bexar_tx':3673, 'cook_il':3528, 'dallas_tx':3
                'miami_dade_fl':3511, 'middlesex_ma':3585, 'orange_ca':3499, 'queens_ny':3627, 'riverside_ca':3499,
             'san_bernardino_ca':3497, 'san_diego_ca':3499, 'san_francisco_ca':3493, 'santa_clara_ca':3493, 'shelby_tn':3661, 'tarrant_tx':3669}
 
-# TODO: Extract postgres username to a variable
-postgres_user = "postgres"
-
 def definePaths():
+    os.makedirs("./Atlas", exist_ok=True)
     os.makedirs("./temp", exist_ok=True)
     os.makedirs("./Working", exist_ok=True)
+    os.makedirs("./Graphics", exist_ok=True)
     os.makedirs("./Output/Data", exist_ok=True)
     paths = {
         'data': "./Data/",
-        'atlas': None,
+        'atlas': "./Atlas/",
         'code': "./",
         'scratch': "./temp/",
         'working': "./Working/",
-        'graphics': None,
+        'graphics': "./Graphics/",
         'website': "./Output/",
     }
     return paths
@@ -210,6 +211,8 @@ class dataLoader():
 
             print('Loading {}: {}'.format(county, fips))
             cmd = f'''ogr2ogr -f "PostgreSQL" "PG:dbname=streetwidths user={postgres_user}" {shpFn} -overwrite -nln rawdata.parcels_{fips} -select "{field_names}" -nlt PROMOTE_TO_MULTI -lco GEOMETRY_NAME=geom -t_srs EPSG:{proj}'''
+            if os.name == "nt":
+                cmd = "pushd \\OSGeo4W\\bin & o4w_env.bat & popd & "
             assert os.system(cmd) == 0
              
             if fips in self.rowParcel:  # delete ROW parcels
@@ -336,11 +339,11 @@ class dataLoader():
             cmd = "java -Xmx5g -jar '{}osm2po-5/osm2po-core-5.2.43-signed.jar' tileSize=x cmd=c workDir='{}osm/' prefix='osm_{}' '{}Roads/{}-latest.osm.pbf'".format(paths['code'], paths['scratch'], fips, paths['data'], state)
             # Check for Windows
             if os.name == "nt":
-                cmd = "powershell " + cmd
+                cmd = "powershell.exe " + cmd
             assert os.system(cmd)==0
             cmd = f"""psql -d streetwidths -h localhost -U {postgres_user} -q -f '{paths['scratch']}osm/osm_{fips}_2po_4pgr.sql'"""
             if os.name == "nt":
-                cmd = "powershell " + cmd
+                cmd = "powershell.exe " + cmd
             assert os.system(cmd)==0
             self.db.execute('CREATE INDEX osm_{}_2po_4pgr_spat_idx ON public.osm_{}_2po_4pgr USING gist (geom_way);'.format(fips, fips))
 
@@ -1528,7 +1531,7 @@ def run_counties(counties_to_do):
 if __name__ == '__main__':
     # TODO: Look for counties in Data and run them (print feedback)
     counties_to_do = []
-    parcel_data_path = paths["Data"] + "Parcel_data"
+    parcel_data_path = paths["data"] + "Parcel_data/"
     for file in os.listdir(parcel_data_path):
         if os.path.isdir(parcel_data_path + file):
             counties_to_do.append(file)
