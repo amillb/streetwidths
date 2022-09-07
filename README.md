@@ -12,7 +12,7 @@ run this project. It assumes you have the following installed and are familiar
 with using them:
 - [conda](https://conda.io/projects/conda/en/latest/user-guide/install/index.html)
 - [PostGIS](https://postgis.net/install/)
-- [Java](https://www.java.com/en/download/help/download_options.html) (on a Mac, this should come pre-installed)
+- [Java](https://www.java.com/en/download/help/download_options.html)
 
 Setting up the conda environment:
 
@@ -51,7 +51,8 @@ Setting up the data and osm2po:
    - Data/Roads
    - Data/Other
    - osm2po-5
-2. After downloading all the data, make sure the directories resemble this
+2. For each county, you'll need to know the EPSG code for the State Plane (in meters). Add it to the dictionary called `projections` at the start of `calculate_street_value.py`. (If anyone wants to share a lookup file, please do and we can automate this step.)
+3. After downloading all the data, make sure the directories resemble this
    structure:
 - Data
   - FBUY
@@ -102,6 +103,11 @@ Calling calculate_street_value.py:
   of county names matching those in Parcel_data (i.e.
   `run_counties(['san_francisco_ca','tarrant_tx'])`).
 - If you want to recreate the JAPA analysis, you can use `runAll()`. However, you will need the parcel shapefiles for all 20 counties, and the underlying census data too. Feel free to contact the author for assistance. 
+
+## Where are my results?
+They will be in the `main` schema as a postgres table: `osm_metrics_XXXXX`, where XXXXX is the county fips code. You can also see some of the intermediate tables for the county.
+
+See the [data dictionary](https://github.com/amillb/streetwidths/blob/master/data_dictionary.csv) for details of how to interpret each column.
 
 ## Credits
 

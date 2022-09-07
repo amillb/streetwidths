@@ -169,6 +169,9 @@ class dataLoader():
         # parcel identifiers for right of way. first is original field name (may be capitalized). second is query
         self.rowParcel = {'48201':['parcel_typ','parcel_typ=6'], '06065':['APN',"apn='RW'"],'48439':['PARCELTYPE','parceltype=3'] }
 
+        for schema in ['rawdata','main']:
+            self.db.execute('CREATE SCHEMA IF NOT EXISTS {};'.format(schema))
+
         # if needed, add  srid 97965 to the spatial references in PostGIS
         if self.db.execfetch('SELECT COUNT(*) from spatial_ref_sys WHERE srid=97965;')[0][0]==0:
             self.db.execute('''INSERT into spatial_ref_sys (srid, auth_name,
@@ -284,7 +287,7 @@ class dataLoader():
 
         self.db.execute('DROP TABLE IF EXISTS rawdata.tracts;')
         tractFn = 'cb_2019_us_tract_500k.shp'
-        cmd = f'''shp2pgsql -s 4326:4326 "{paths['data']}Tracts/{tractFn}" rawdata.tracts | psql -d streetwidths -U {postgres_user}'''
+        cmd = f'''shp2pgsql -s 4326:4326 "{paths['data']}Tracts/{tractFn}" rawdata.tracts | psql -q -d streetwidths -U {postgres_user}'''
         assert os.system(cmd) == 0
         self.db.execute('CREATE INDEX tracts_spat_idx ON rawdata.tracts USING gist (geom);')
         self.db.execute('CREATE INDEX tracts_spat_geogidx ON rawdata.tracts USING gist (geography(geom));') # to help distance matrix
@@ -375,7 +378,7 @@ class dataLoader():
         and maybe other things that will get added later on"""
         if 'urbanized_area' in self.db.list_tables():
             return
-        cmd = f'''shp2pgsql -s 4326:4326 "{paths['data']}Other/tl_2019_us_uac10.shp" rawdata.urbanized_area | psql -d streetwidths -U {postgres_user}'''
+        cmd = f'''shp2pgsql -s 4326:4326 "{paths['data']}Other/tl_2019_us_uac10.shp" rawdata.urbanized_area | psql -q -d streetwidths -U {postgres_user}'''
         assert os.system(cmd) == 0
         self.db.execute('CREATE INDEX urbanized_area_spat_idx ON rawdata.urbanized_area USING gist (geom);')        
 
@@ -392,10 +395,15 @@ class dataLoader():
                             SET urbanarea = t.aland * ta.urbanarea_frc / 1e6
                             FROM rawdata.tracts t WHERE t.geoid=ta.geoid;''')
 
-        # load FBUY raster
+    def loadFBUY(self):
+        """load FBUY raster
         # reprojection process was trial and error
         # note: srid 97965 inserted manually using INSERT statement here: https://spatialreference.org/ref/sr-org/7965/
-        cmd = f'raster2pgsql -d -C -M -I -t 100x100 {paths["data"]}FBUY/data/FBUY.tif rawdata.fbuytmp | psql -d streetwidths -U {paths["data"]}'
+        """
+        if 'fbuy' in self.db.list_tables():
+            return
+        cmd = f'raster2pgsql -d -C -M -I -t 100x100 {paths["data"]}FBUY/data/FBUY.tif rawdata.fbuytmp | psql -q -d streetwidths -U {postgres_user}'
+        print(cmd)
         assert os.system(cmd) == 0
         cmd = '''DROP TABLE IF EXISTS rawdata.fbuy;
                 CREATE TABLE rawdata.fbuy AS
@@ -570,6 +578,7 @@ class dataLoader():
         self.loadParcelsandRoads()
         self.loadRoads()
         self.loadOther()
+        self.loadFBUY()
         try:
             _ = self.getCensusDataFrame()
         except FileNotFoundError as e:
@@ -911,7 +920,7 @@ class createStreetPolygons():
             LEFT JOIN 
             (
             SELECT osm_id, AVG(landvalue_acre) AS landvalue_acre, AVG(landvalue_acre_std) AS landvalue_acre_std,
-                AVG(interpolated::int)::real AS interpolated --, AVG(built_median) AS built_median,
+                AVG(interpolated::int)::real AS interpolated, -- AVG(built_median) AS built_median,
                 AVG(units_sqkm) AS units_sqkm, AVG(pop_sqkm) AS pop_sqkm 
             FROM main.streettotract_{fips} s2t
             LEFT JOIN rawdata.landvalues lv USING(geoid)
@@ -1525,8 +1534,8 @@ def run_all():
 
 def run_counties(counties_to_do):
     dataLoader(counties_to_do=counties_to_do).loadAll()
-    createStreetPolygons(counties_to_do=counties_to_do).doAllCounties() 
-    export_for_mapbox([fipslookup[cc] for cc in counties_to_do])  
+    createStreetPolygons(counties_to_do=counties_to_do, forceUpdate=True).doAllCounties() 
+    # export_for_mapbox([fipslookup[cc] for cc in counties_to_do])  
 
 if __name__ == '__main__':
     # TODO: Look for counties in Data and run them (print feedback)

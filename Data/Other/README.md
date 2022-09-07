@@ -5,6 +5,8 @@ in the United
 States](https://www.fhfa.gov/PolicyProgramsResearch/Research/Pages/wp1901.aspx),
 and put it here.
 
+Make sure to move the census boundaries out of their parent folder. E.g. `tl_2019_us_uac10.shp` should be in the `Data/Other/` directory, not in a subfolder.
+
 Download
 [tl_2019_us_uac10.zip](https://www2.census.gov/geo/tiger/TIGER2019/UAC/tl_2019_us_uac10.zip)
 from
