@@ -215,7 +215,7 @@ class dataLoader():
             print('Loading {}: {}'.format(county, fips))
             cmd = f'''ogr2ogr -f "PostgreSQL" "PG:dbname=streetwidths user={postgres_user}" {shpFn} -overwrite -nln rawdata.parcels_{fips} -select "{field_names}" -nlt PROMOTE_TO_MULTI -lco GEOMETRY_NAME=geom -t_srs EPSG:{proj}'''
             if os.name == "nt":
-                cmd = "pushd \\OSGeo4W\\bin & o4w_env.bat & popd & "
+                cmd = "pushd \\OSGeo4W\\bin & o4w_env.bat & popd & " + cmd
             assert os.system(cmd) == 0
              
             if fips in self.rowParcel:  # delete ROW parcels

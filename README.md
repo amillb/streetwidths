@@ -12,7 +12,7 @@ run this project. It assumes you have the following installed and are familiar
 with using them:
 - [conda](https://conda.io/projects/conda/en/latest/user-guide/install/index.html)
 - [PostGIS](https://postgis.net/install/)
-- [Java](https://www.java.com/en/download/help/download_options.html)
+- [Java (64-bit)](https://www.java.com/en/download/help/download_options.html)
 
 Setting up the conda environment:
 
