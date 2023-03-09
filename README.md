@@ -79,6 +79,8 @@ Setting up the data and osm2po:
   - osm2po-core-5.2.43-signed.jar
   - ...
 
+Note that the parcels data should have voids for the street rights of way, rather than representing streets with their own parcel(s). If you don't have avoids, you will probably get an out of memory error. (Feel free to adapt the code to make it robust to this situation.)
+
 Additional Windows setup:
 
 1. Make sure Powershell is installed and added to your PATH. (This is usually
