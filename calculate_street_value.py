@@ -51,7 +51,7 @@ projections = {'alameda_ca':3493, 'bexar_tx':3673, 'cook_il':3528, 'dallas_tx':3
                'miami_dade_fl':3511, 'middlesex_ma':3585, 'orange_ca':3499, 'queens_ny':3627, 'riverside_ca':3499,
             'san_bernardino_ca':3497, 'san_diego_ca':3499, 'san_francisco_ca':3493, 'santa_clara_ca':3493, 'shelby_tn':3661, 'tarrant_tx':3669,
             'contra_costa_ca': 3493, 'fresno_ca': 3495, 'kern_ca': 3497, 'monterey_ca': 3495, 'placer_ca': 3491, 'sacramento_ca': 3491,
-            'san_joaquin_ca': 3493, 'solano_ca': 3491, 'sonoma_ca': 3491, 'tulare_ca': 3495}
+            'san_joaquin_ca': 3493, 'solano_ca': 3491, 'sonoma_ca': 3491, 'stanislaus_ca':3493, 'tulare_ca': 3495, 'ventura_ca':3497}
 
 def definePaths():
     os.makedirs("./Atlas", exist_ok=True)
