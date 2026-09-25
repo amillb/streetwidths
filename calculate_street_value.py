@@ -51,7 +51,14 @@ projections = {'alameda_ca':3493, 'bexar_tx':3673, 'cook_il':3528, 'dallas_tx':3
                'miami_dade_fl':3511, 'middlesex_ma':3585, 'orange_ca':3499, 'queens_ny':3627, 'riverside_ca':3499,
             'san_bernardino_ca':3497, 'san_diego_ca':3499, 'san_francisco_ca':3493, 'santa_clara_ca':3493, 'shelby_tn':3661, 'tarrant_tx':3669,
             'contra_costa_ca': 3493, 'fresno_ca': 3495, 'kern_ca': 3497, 'monterey_ca': 3495, 'placer_ca': 3491, 'sacramento_ca': 3491,
-            'san_joaquin_ca': 3493, 'solano_ca': 3491, 'sonoma_ca': 3491, 'stanislaus_ca':3493, 'tulare_ca': 3495, 'ventura_ca':3497}
+            'san_joaquin_ca': 3493, 'solano_ca': 3491, 'sonoma_ca': 3491, 'stanislaus_ca':3493, 'tulare_ca': 3495, 'ventura_ca':3497,
+            'madison_al': 3465, 'pima_az': 3478, 'adams_co': 3503, 'chaffee_co': 3501, 'denver_co': 3501, 'jefferson_co': 3501,
+            'tolland_ct': 3507, 'washington_dc': 3559, 'orange_fl': 3511, 'osceola_fl': 3511, 'walton_fl': 3514,
+            'chatham_ga': 3518, 'cherokee_ga': 3520, 'fayette_ga': 3520, 'fulton_ga': 3520, 'elkhart_in': 3532, 'st_joseph_in': 3532,
+            'barnstable_ma': 3585, 'suffolk_ma': 3585, 'oakland_mi': 3592, 'washtenaw_mi': 3592, 'wayne_mi': 3592,
+            'suffolk_ny': 3627, 'multnomah_or': 3645, 'washington_or': 3645, 'northampton_pa': 3651, 'collin_tx': 3669, 'hidalgo_tx': 3671, 'travis_tx': 3663,
+            'norfolk_city_va': 3687, 'richmond_city_va': 3687, 'salt_lake_ut': 3675,
+            }
 
 def definePaths():
     os.makedirs("./Atlas", exist_ok=True)
@@ -89,12 +96,16 @@ def createLookups():
     fn = 'all-geocodes-v2020.xlsx'
     df = pd.read_excel(paths['code']+fn, engine='openpyxl', skiprows=4)
     df = df[df['Summary Level']==50]
+    df = df[df['State Code (FIPS)']!=72] # drop Puerto Rico which has different local government
     df['state2letter'] = df['State Code (FIPS)'].astype(str).str.zfill(2).map(state2letters)
-    df['countyname'] = df['Area Name (including legal/statistical area description)'].str.lower().str.replace('county','').str.replace(' ','_').str.replace('-','_') + df.state2letter
+    df['countyname'] = df['Area Name (including legal/statistical area description)'].str.lower().str.replace(' county','').str.replace(' ','_').str.replace('-','_') + '_' + df.state2letter
     df['fips'] = df['State Code (FIPS)'].astype(str).str.zfill(2) + df['County Code (FIPS)'].astype(str).str.zfill(3)
 
-    df.dropna(subset=['countyname'], inplace=True)
+    #df.dropna(subset=['countyname'], inplace=True)
+    df = df[df['County Code (FIPS)']!=0]
     fipslookup = df.set_index('countyname').fips.to_dict()
+    # hacks for weird geographies - dc and county-equivalents 
+    fipslookup['washington_dc'] = '11001' # hack
 
 
     countylookup = {fips:county for county, fips in fipslookup.items()}
@@ -169,7 +180,15 @@ class dataLoader():
                           '48439': ['PropertyData.txt', ['taxpin'],['GIS_Link'],'Year_Built','|'],
                           '53033': ['EXTR_ResBldg.csv', ['MAJOR','MINOR'], ['Major','Minor'],'YrBuilt',',']}
         # parcel identifiers for right of way. first is original field name (may be capitalized). second is query
-        self.rowParcel = {'48201':['parcel_typ','parcel_typ=6'], '06065':['APN',"apn='RW'"],'48439':['PARCELTYPE','parceltype=3'] }
+        self.rowParcel = {'48201':['parcel_typ','parcel_typ=6'], '06065':['APN',"apn='RW'"],'48439':['PARCELTYPE','parceltype=3'],
+                          '08059':['PIN', "pin='ROW'"],                                  # Jefferson CO
+                          '41051':['TLID', "tlid LIKE '%-STR'"],                          # Multnomah OR
+                          '41067':['TLID', "tlid LIKE '% ROW'"],                          # Washington OR
+                          '25025':['POLY_TYPE', "poly_type='ROW'"],                            # Suffolk MA
+                          '25001':['POLY_TYPE', "poly_type='ROW'"],                            # Barnstable MA
+                          '09013':['Parcel_Typ', "parcel_typ IN ('ROW','MUNICIPAL ROW','ROAD')"],  # Tolland CT
+                           }
+
 
         for schema in ['rawdata','main']:
             self.db.execute('CREATE SCHEMA IF NOT EXISTS {};'.format(schema))
@@ -210,12 +229,12 @@ class dataLoader():
             if fips in self.rowParcel and self.rowParcel[fips][0] not in field_names:
                 field_names += [self.rowParcel[fips][0]] 
 
-            field_names = ' '.join(field_names)
+            field_names = ', '.join(field_names)
             #print(' '.join([field.name for field in lyr.schema]))
             ds = None # to close it
 
             print('Loading {}: {}'.format(county, fips))
-            cmd = f'''ogr2ogr -f "PostgreSQL" "PG:dbname=streetwidths user={postgres_user}" {shpFn} -overwrite -nln rawdata.parcels_{fips} -select "{field_names}" -nlt PROMOTE_TO_MULTI -lco GEOMETRY_NAME=geom -t_srs EPSG:{proj}'''
+            cmd = f'''ogr2ogr -f "PostgreSQL" "PG:dbname=streetwidths user={postgres_user}" "{shpFn}" -overwrite -nln rawdata.parcels_{fips} -select "{field_names}" -nlt PROMOTE_TO_MULTI -lco GEOMETRY_NAME=geom -t_srs EPSG:{proj}'''
             if os.name == "nt":
                 cmd = "pushd \\OSGeo4W\\bin & o4w_env.bat & popd & " + cmd
             assert os.system(cmd) == 0
@@ -240,7 +259,15 @@ class dataLoader():
             print('Updated {} invalid parcels with self-intersection'.format(self.db.cursor.rowcount))
             #self.db.execute('''UPDATE rawdata.parcels_{} SET geom=ST_Multi(ST_ConvexHull(geom)) WHERE NOT ST_IsValid(geom);'''.format(fips))
             #print('Updated {} invalid parcels'.format(self.db.cursor.rowcount))
+
+            self.db.execute('''UPDATE rawdata.parcels_{} SET geom=ST_Multi(ST_CollectionExtract(ST_MakeValid(geom), 3))
+                             WHERE NOT ST_IsValid(geom);'''.format(fips))
+            print('Repaired {} remaining invalid parcels with ST_MakeValid'.format(self.db.cursor.rowcount))
+            self.db.execute('''DELETE FROM rawdata.parcels_{} WHERE geom IS NULL OR ST_IsEmpty(geom);'''.format(fips))
+            print('Dropped {} empty parcels'.format(self.db.cursor.rowcount))
             assert self.db.execfetch('''SELECT COUNT(*) FROM rawdata.parcels_{} WHERE NOT ST_IsValid(geom);'''.format(fips))[0][0]==0
+
+
 
             if fips == '25017': # middlesex is whole state. Restrict to that county
                 cmd = '''CREATE TABLE rawdata.parcels_25017_tmp AS
@@ -308,6 +335,8 @@ class dataLoader():
             self.db.execute('DROP TABLE tracts_tmp;')
             self.db.execute('DROP TABLE tracts;')
             self.db.execute('ALTER TABLE tracts2 RENAME TO tracts;')
+            self.db.execute('CREATE INDEX tracts_spat_idx ON rawdata.tracts USING gist (geom);')
+            self.db.execute('CREATE INDEX tracts_spat_geogidx ON rawdata.tracts USING gist (geography(geom));')
         except FileNotFoundError as e:
             # TODO: Rerun to test this
             self.db.execute('ALTER TABLE tracts ADD column pop_sqkm real, ADD COLUMN units_sqkm real;')
@@ -497,15 +526,13 @@ class dataLoader():
         return landprice
 
     def getCensusDataFrame(self):
-        """returns a df of the tables of interest for the counties of interest
-        Currently, only for the 20-county JAPA sample"""
+        """returns a df of the tables of interest for the counties of interest"""
 
         outFn = paths['working']+'census_compiled.pandas'
         if os.path.exists(outFn) and not self.forceUpdate:
             return pd.read_pickle(outFn) 
 
-        core_fips = [fipslookup[cc] for cc in core_counties]
-        statesToDo = np.unique([fp[:2] for fp in core_fips])
+        statesToDo = np.unique([fp[:2] for fp in self.fips_to_do])
         path = paths['data']+'Census/'
 
         colsToUse = {'B01003_001':'totalpop', 'B11001_001':'totalhhs', 'B25001_001':'n_units',
@@ -523,13 +550,13 @@ class dataLoader():
         statedfs = {}
         for statefips in statesToDo:
             state2letter = state2letters[statefips]
-            counties = [cc[2:] for cc in core_fips if cc[:2]==statefips]
+            counties = [cc[2:] for cc in self.fips_to_do if cc[:2]==statefips]
             geo = pd.read_csv(path+state2letter+'/'+geoFile.replace('XX',state2letter),header=None, usecols=list(range(15))+[48,49], encoding='latin-1')
             geo.columns=geoHeaders.columns
 
             # restrict to tracts in counties of interest
             geo = geo[geo.SUMLEVEL==140]
-            geo = geo[geo.COUNTY.isin(counties)]
+            geo = geo[geo.COUNTY.astype(int).astype(str).str.zfill(3).isin(counties)]
             geo = geo[geoColsToUse]
 
             # merge other files
